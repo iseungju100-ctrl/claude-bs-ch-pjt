@@ -1,0 +1,111 @@
+// This is your Prisma schema file,
+// learn more about it in the docs: https://pris.ly/d/prisma-schema
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "sqlite"
+  url      = env("DATABASE_URL")
+}
+
+enum ReagentCategory {
+  ACID
+  BASE
+  STANDARD
+  BUFFER_COMPONENT
+  SALT
+  OTHER
+}
+
+enum StandardizationStatus {
+  PASS
+  FAIL
+  PENDING
+}
+
+// 시약 마스터
+model Reagent {
+  id                   Int                       @id @default(autoincrement())
+  name_kr              String
+  name_en              String
+  cas_no               String?
+  formula              String
+  mw_anhydrous         Float
+  density              Float? // 액체시약용 (nullable)
+  default_assay        Float                     @default(100) // 기본값 100 (%)
+  category             ReagentCategory
+  createdAt            DateTime                  @default(now())
+  updatedAt            DateTime                  @updatedAt
+
+  // Relations
+  hydrateVariants      HydrateVariant[]
+  bufferAsAcid         BufferSystem[]            @relation("AcidComponent")
+  bufferAsBase         BufferSystem[]            @relation("BaseComponent")
+  standardizationRecords StandardizationRecord[]
+
+  @@map("reagents")
+}
+
+// 수화물 종류 (1:N)
+model HydrateVariant {
+  id                   Int                       @id @default(autoincrement())
+  reagent_id           Int
+  label                String // 예: "1수화물", "2수화물"
+  mw_hydrated          Float
+
+  reagent              Reagent                   @relation(fields: [reagent_id], references: [id], onDelete: Cascade)
+
+  @@map("hydrate_variants")
+}
+
+// 완충계 프리셋
+model BufferSystem {
+  id                   Int                       @id @default(autoincrement())
+  name                 String
+  acid_component_id    Int
+  base_component_id    Int
+  pKa1                 Float
+  pKa2                 Float?
+  pKa3                 Float?
+  createdAt            DateTime                  @default(now())
+  updatedAt            DateTime                  @updatedAt
+
+  acid_component       Reagent                   @relation("AcidComponent", fields: [acid_component_id], references: [id])
+  base_component       Reagent                   @relation("BaseComponent", fields: [base_component_id], references: [id])
+
+  @@map("buffer_systems")
+}
+
+// 표정 기록
+model StandardizationRecord {
+  id                   Int                       @id @default(autoincrement())
+  reagent_id           Int
+  trials               String // JSON 배열: [{"weight_mg": 123.45, "volume_mL": 10.0, "factor": 1.002}, ...]
+  mean                 Float?
+  sd                   Float? // 표준편차
+  rsd_percent          Float? // 상대표준편차 (%)
+  judged_status        StandardizationStatus     @default(PENDING)
+  created_by           String
+  created_at           DateTime                  @default(now())
+
+  reagent              Reagent                   @relation(fields: [reagent_id], references: [id], onDelete: Cascade)
+
+  @@map("standardization_records")
+}
+
+// 라벨 발행 이력
+model LabelRecord {
+  id                   Int                       @id @default(autoincrement())
+  solution_name        String
+  concentration        Float
+  prep_date            DateTime
+  expiry_date          DateTime
+  lot_no               String
+  prepared_by          String
+  linked_calc_id       String? // 계산 기록 ID (추후 확장용)
+  createdAt            DateTime                  @default(now())
+
+  @@map("label_records")
+}
